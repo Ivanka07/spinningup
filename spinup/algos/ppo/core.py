@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import scipy.signal
-from gym.spaces import Box, Discrete
+from gym.spaces import Box, Discrete, Dict
 
 EPS = 1e-8
 
@@ -16,11 +16,16 @@ def placeholder(dim=None):
 def placeholders(*args):
     return [placeholder(dim) for dim in args]
 
-def placeholder_from_space(space):
+def placeholder_from_space(space, dim=None):
+    print('Dealing with space = ',type(space))
     if isinstance(space, Box):
         return placeholder(space.shape)
     elif isinstance(space, Discrete):
         return tf.placeholder(dtype=tf.int32, shape=(None,))
+    elif isinstance(space, Dict):
+        print('We need to rearange space')
+        #we need this done automatically
+        return placeholder(31)
     raise NotImplementedError
 
 def placeholders_from_spaces(*args):
@@ -85,6 +90,23 @@ def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, actio
     return pi, logp, logp_pi
 
 
+def is_dict(obs):
+    return 'dict' in str(type(obs))
+
+def dim_dict(obs):
+    raise NotImplementedError
+
+
+def obs_dict_to_list(obs, dim=31):    
+    obs_arr = np.empty([dim, 1], dtype=float)
+    is_dict = 'dict' in str(type(obs))
+    print(obs_arr.shape)
+    if is_dict:
+        for key, value in obs.items():
+            value = value.reshape((value.shape[0], 1))
+            np.concatenate((obs_arr, value))
+        obs_arr =  obs_arr.reshape((obs_arr.shape[1], obs_arr.shape[0]))
+        return obs_arr
 """
 Actor-Critics
 """

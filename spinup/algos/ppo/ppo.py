@@ -175,13 +175,21 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     env = env_fn()
     obs_dim = env.observation_space.shape
     act_dim = env.action_space.shape
+
+    #check if obs is dict
+    if core.is_dict(env.observation_space):
+        if obs_dim == None:
+            obs_dim = 31
     
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
     # Inputs to computation graph
+    print('Obs space= ', env.observation_space)
+    print('Action space =',  env.action_space)
+
     x_ph, a_ph = core.placeholders_from_spaces(env.observation_space, env.action_space)
-    adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
+    adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)   
 
     # Main outputs from computation graph
     pi, logp, logp_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
@@ -249,10 +257,16 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     start_time = time.time()
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+    
+    if core.is_dict(o):
+        print('o is the dict')
+        o = core.obs_dict_to_list(o)
 
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
+            print('In the main loop Epoch = ', epoch, ' local step= ', t)
+            
             a, v_t, logp_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
 
             # save and log
@@ -260,6 +274,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.store(VVals=v_t)
 
             o, r, d, _ = env.step(a[0])
+            
             ep_ret += r
             ep_len += 1
 
@@ -274,6 +289,10 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                     # only save EpRet / EpLen if trajectory finished
                     logger.store(EpRet=ep_ret, EpLen=ep_len)
                 o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+
+            if core.is_dict(o):
+                print('o is the dict')
+                o = core.obs_dict_to_list(o)
 
         # Save model
         if (epoch % save_freq == 0) or (epoch == epochs-1):
@@ -309,7 +328,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--exp_name', type=str, default='ppo')
     args = parser.parse_args()
 
