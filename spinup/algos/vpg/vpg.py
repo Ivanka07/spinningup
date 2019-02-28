@@ -8,6 +8,7 @@ from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
 
 
+
 class VPGBuffer:
     """
     A buffer for storing trajectories experienced by a VPG agent interacting
@@ -92,7 +93,7 @@ Vanilla Policy Gradient
 def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=50, gamma=0.99, pi_lr=3e-4,
         vf_lr=1e-3, train_v_iters=80, lam=0.97, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=10):
+        logger_kwargs=dict(), save_freq=10, nutest_ep=100, test_ep_len=50):
     """
 
     Args:
@@ -161,6 +162,10 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     env = env_fn()
     obs_dim = env.observation_space.shape
     act_dim = env.action_space.shape
+        #check if obs is dict
+    if core.is_dict(env.observation_space):
+        if obs_dim == None:
+            obs_dim = 16
     
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
@@ -228,11 +233,14 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     start_time = time.time()
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
+
+
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
+            if core.is_dict(o):
+                o = core.obs_dict_to_list(o)
             a, v_t, logp_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
-
             # save and log
             buf.store(o, a, r, v_t, logp_t)
             logger.store(VVals=v_t)
@@ -260,8 +268,33 @@ def vpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # Perform VPG update!
         update()
 
+        #perform test after policy update
+
+        o = env.reset()        
+        success_rate = 0.0    
+        for ep in range(nutest_ep):
+            for t in range(test_ep_len):
+                #print(o)
+                if core.is_dict(o):
+                    o = core.obs_dict_to_list(o)
+
+                a, _, _ = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
+                o, r, d, info = env.step(a[0])
+                
+                if info['is_success']:
+                    success_rate = success_rate + 1.0
+                
+                terminal = (t  == test_ep_len - 1)
+                if terminal or info['is_success']:
+                    o = env.reset()
+                    break
+
+        success_rate = success_rate / nutest_ep
+        print('success_rate', success_rate)
+
         # Log info about epoch
         logger.log_tabular('Epoch', epoch)
+        logger.log_tabular('test/success_rate', success_rate)
         logger.log_tabular('EpRet', with_min_and_max=True)
         logger.log_tabular('EpLen', average_only=True)
         logger.log_tabular('VVals', with_min_and_max=True)

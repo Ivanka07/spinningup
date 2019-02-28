@@ -94,7 +94,7 @@ def is_dict(obs):
     return 'dict' in str(type(obs))
 
 def dim_dict(obs):
-    raise NotImplementedError
+    raise NotImplementedError  
 
 
 def obs_dict_to_list(obs, dim=31):    
